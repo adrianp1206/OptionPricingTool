@@ -33,10 +33,10 @@
             font-weight: bold;
         }
         .call-price {
-            color: #28a745; /* Green for call price */
+            color: #28a745;
         }
         .put-price {
-            color: #dc3545; /* Red for put price */
+            color: #dc3545;
         }
         .heatmap-container {
             margin-top: 50px;
@@ -55,6 +55,19 @@
         <div class="row">
             <!-- Sidebar -->
             <div class="col-md-3 sidebar">
+                <!-- Option Type Toggle (Hidden by Default) -->
+                <div id="option-type-toggle" class="mt-4" style="display: none;">
+                    <h3>Option Type</h3>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="option_type" id="option_european" value="European" checked>
+                        <label class="form-check-label" for="option_european">European</label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input" type="radio" name="option_type" id="option_american" value="American">
+                        <label class="form-check-label" for="option_american">American</label>
+                    </div>
+                </div>
+
                 <h2>Inputs</h2>
                 <form id="pricing-form">
                     <div class="mb-3">
@@ -126,20 +139,30 @@
     
             <!-- Main Content -->
             <div class="col-md-9 main-content">
-                <h1 class="text-center">Black-Scholes Option Pricing</h1>
+                <!-- Toggle Buttons for Pricing Method -->
+                <div class="text-center mb-4">
+                    <button id="toggle-bs" class="btn btn-primary me-2" onclick="setPricingMethod('Black-Scholes')">Black-Scholes</button>
+                    <button id="toggle-mc" class="btn btn-secondary" onclick="setPricingMethod('Monte Carlo')">Monte Carlo</button>
+                </div>
+                
+                <!-- Dynamic Title -->
+                <h1 class="text-center" id="pricing-method-title">Black-Scholes Option Pricing</h1>
+                
+                <!-- Results -->
                 <div id="results" style="display: none;">
                     <p class="result-box call-price" id="call-price"></p>
                     <p class="result-box put-price" id="put-price"></p>
-                </div>                
-    
+                </div>
+                
+                <!-- Heatmap and P/L -->
                 <div class="heatmap-container">
                     <h3>Call Price Heatmap</h3>
                     <div id="call-heatmap-container" class="mt-4"></div>
-    
+
                     <h3 class="mt-5">Put Price Heatmap</h3>
                     <div id="put-heatmap-container" class="mt-4"></div>
                 </div>
-    
+
                 <div class="pl-container mt-5">
                     <h3>Profit/Loss Chart</h3>
                     <div id="pl-chart-container" class="mt-4"></div>
@@ -151,30 +174,90 @@
 
     <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
     <script>
+        let selectedMethod = 'Black-Scholes';
+        function setPricingMethod(method) {
+            selectedMethod = method;
+        
+            const title = document.getElementById('pricing-method-title');
+            title.innerText = `${method} Option Pricing`;
+        
+            document.getElementById('toggle-bs').classList.toggle('btn-primary', method === 'Black-Scholes');
+            document.getElementById('toggle-bs').classList.toggle('btn-secondary', method !== 'Black-Scholes');
+            document.getElementById('toggle-mc').classList.toggle('btn-primary', method === 'Monte Carlo');
+            document.getElementById('toggle-mc').classList.toggle('btn-secondary', method !== 'Monte Carlo');
+        
+            const optionTypeToggle = document.getElementById('option-type-toggle');
+            const exoticFields = document.getElementById('exotic-options-fields');
+            if (method === 'Monte Carlo') {
+                optionTypeToggle.style.display = 'block';
+            } else {
+                optionTypeToggle.style.display = 'none';
+                exoticFields.style.display = 'none';
+            }
+        
+            calculatePrices();
+            generateHeatMap();
+            generatePLChart();
+        }
+        
+
         function updateVolatilityLabel(value) {
             document.getElementById('volatility_label').innerText = value;
         }
 
         function calculatePrices() {
             const formData = new FormData(document.getElementById('pricing-form'));
-
+            
+            const optionType = document.querySelector('input[name="option_type"]:checked').value;
+            formData.append('option_type', optionType);
+        
             fetch('/calculate', {
                 method: 'POST',
                 body: formData
             })
-            .then(response => response.json())
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`HTTP error! Status: ${response.status}`);
+                }
+                return response.json();
+            })
             .then(data => {
+                console.log("Backend Response:", data);
+        
                 if (data.error) {
                     alert(data.error);
                 } else {
-                    document.getElementById('call-price').innerText = "Call Price: " + data.call_price;
-                    document.getElementById('put-price').innerText = "Put Price: " + data.put_price;
+                    const callPrice = data.call_price;
+                    const putPrice = data.put_price;
+                    
+                    setDefaultHeatMapAndPLParameters();
+                    document.getElementById('call-price').innerText = `Call Price: ${callPrice}`;
+                    document.getElementById('put-price').innerText = `Put Price: ${putPrice}`;
                     document.getElementById('results').style.display = 'block';
                 }
             })
             .catch(error => {
-                alert('An error occurred: ' + error);
+                console.error("Error:", error);
+                alert("An error occurred. Check the console for details.");
             });
+        }
+        
+        
+        function setDefaultHeatMapAndPLParameters() {
+            const stockPrice = parseFloat(document.getElementById('stock_price').value);
+            const volatility = parseFloat(document.getElementById('volatility').value);
+            const strikePrice = parseFloat(document.getElementById('strike_price').value);
+        
+            const spotRangeBuffer = strikePrice * 0.4;
+            const volatilityBuffer = 0.1;
+        
+            document.getElementById('min_spot').value = (stockPrice - spotRangeBuffer).toFixed(2);
+            document.getElementById('max_spot').value = (stockPrice + spotRangeBuffer).toFixed(2);
+            document.getElementById('min_volatility').value = Math.max(0, (volatility - volatilityBuffer)).toFixed(2);
+            document.getElementById('max_volatility').value = (volatility + volatilityBuffer).toFixed(2);
+        
+            document.getElementById('min_spot_pl').value = (stockPrice - spotRangeBuffer).toFixed(2);
+            document.getElementById('max_spot_pl').value = (stockPrice + spotRangeBuffer).toFixed(2);
         }
 
         function generateHeatMap() {
@@ -186,6 +269,8 @@
             const timeToMaturity = parseFloat(document.getElementById('time_to_maturity').value);
             const riskFreeRate = parseFloat(document.getElementById('risk_free_rate').value);
         
+            const optionType = document.querySelector('input[name="option_type"]:checked')?.value || 'European';
+        
             fetch('/heatmap', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -196,105 +281,115 @@
                     max_volatility: maxVolatility,
                     strike_price: strikePrice,
                     time_to_maturity: timeToMaturity,
-                    risk_free_rate: riskFreeRate
+                    risk_free_rate: riskFreeRate,
+                    option_type: selectedMethod === 'Monte Carlo' ? optionType : 'European',
+                }),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        const spotPrices = data.spot_prices;
+                        const volatilities = data.volatilities;
+                        const callPrices = data.call_prices;
+                        const putPrices = data.put_prices;
+        
+                        const callMinPrice = Math.min(...callPrices.flat());
+                        const callMaxPrice = Math.max(...callPrices.flat());
+                        const putMinPrice = Math.min(...putPrices.flat());
+                        const putMaxPrice = Math.max(...putPrices.flat());
+        
+                        const callAnnotations = [];
+                        callPrices.forEach((row, i) => {
+                            row.forEach((val, j) => {
+                                callAnnotations.push({
+                                    x: spotPrices[j],
+                                    y: volatilities[i],
+                                    text: val.toFixed(2),
+                                    font: { color: 'black', size: 10 },
+                                    showarrow: false,
+                                });
+                            });
+                        });
+        
+                        const callTrace = {
+                            z: callPrices,
+                            x: spotPrices,
+                            y: volatilities,
+                            type: 'heatmap',
+                            colorscale: [
+                                [0, 'red'], 
+                                [0.5, 'yellow'], 
+                                [1, 'green'],
+                            ],
+                            zmin: callMinPrice,
+                            zmax: callMaxPrice,
+                        };
+        
+                        const callLayout = {
+                            title: 'Call Price Heatmap',
+                            xaxis: { title: 'Spot Price' },
+                            yaxis: { title: 'Volatility' },
+                            annotations: callAnnotations,
+                        };
+        
+                        Plotly.newPlot('call-heatmap-container', [callTrace], callLayout);
+                        const putAnnotations = [];
+                        putPrices.forEach((row, i) => {
+                            row.forEach((val, j) => {
+                                putAnnotations.push({
+                                    x: spotPrices[j],
+                                    y: volatilities[i],
+                                    text: val.toFixed(2),
+                                    font: { color: 'black', size: 10 },
+                                    showarrow: false,
+                                });
+                            });
+                        });
+        
+                        const putTrace = {
+                            z: putPrices,
+                            x: spotPrices,
+                            y: volatilities,
+                            type: 'heatmap',
+                            colorscale: [
+                                [0, 'red'], 
+                                [0.5, 'yellow'],
+                                [1, 'green'], 
+                            ],
+                            zmin: putMinPrice,
+                            zmax: putMaxPrice,
+                        };
+        
+                        const putLayout = {
+                            title: 'Put Price Heatmap',
+                            xaxis: { title: 'Spot Price' },
+                            yaxis: { title: 'Volatility' },
+                            annotations: putAnnotations,
+                        };
+        
+                        Plotly.newPlot('put-heatmap-container', [putTrace], putLayout);
+                    }
                 })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert(data.error);
-                } else {
-                    const spotPrices = data.spot_prices;
-                    const volatilities = data.volatilities;
-                    const callPrices = data.call_prices;
-                    const putPrices = data.put_prices;
-        
-                    // Unified Color Scale for Call and Put Heatmaps
-                    const minPrice = Math.min(...callPrices.flat(), ...putPrices.flat());
-                    const maxPrice = Math.max(...callPrices.flat(), ...putPrices.flat());
-        
-                    // Call Price Heatmap
-                    const callTrace = {
-                        z: callPrices,
-                        x: spotPrices,
-                        y: volatilities,
-                        type: 'heatmap',
-                        colorscale: [
-                            [0, 'red'], // Lower prices in red
-                            [1, 'green'] // Higher prices in green
-                        ],
-                        zmin: minPrice,
-                        zmax: maxPrice,
-                        text: callPrices.map(row => row.map(val => val.toFixed(2))),
-                        hoverinfo: 'text+z',
-                        showscale: true
-                    };
-        
-                    const callLayout = {
-                        title: 'Call Price Heatmap',
-                        xaxis: { title: 'Spot Price' },
-                        yaxis: { title: 'Volatility' },
-                        annotations: callPrices.flatMap((row, i) =>
-                            row.map((val, j) => ({
-                                x: spotPrices[j],
-                                y: volatilities[i],
-                                text: val.toFixed(2),
-                                font: { color: 'black', size: 10 },
-                                showarrow: false
-                            }))
-                        )
-                    };
-        
-                    Plotly.newPlot('call-heatmap-container', [callTrace], callLayout);
-        
-                    // Put Price Heatmap
-                    const putTrace = {
-                        z: putPrices,
-                        x: spotPrices,
-                        y: volatilities,
-                        type: 'heatmap',
-                        colorscale: [
-                            [0, 'red'], // Lower prices in red
-                            [1, 'green'] // Higher prices in green
-                        ],
-                        zmin: minPrice,
-                        zmax: maxPrice,
-                        text: putPrices.map(row => row.map(val => val.toFixed(2))),
-                        hoverinfo: 'text+z',
-                        showscale: true
-                    };
-        
-                    const putLayout = {
-                        title: 'Put Price Heatmap',
-                        xaxis: { title: 'Spot Price' },
-                        yaxis: { title: 'Volatility' },
-                        annotations: putPrices.flatMap((row, i) =>
-                            row.map((val, j) => ({
-                                x: spotPrices[j],
-                                y: volatilities[i],
-                                text: val.toFixed(2),
-                                font: { color: 'black', size: 10 },
-                                showarrow: false
-                            }))
-                        )
-                    };
-        
-                    Plotly.newPlot('put-heatmap-container', [putTrace], putLayout);
-                }
-            })
-            .catch(error => {
-                alert('An error occurred: ' + error);
-            });
-        }
+                .catch(error => {
+                    alert(`An error occurred: ${error}`);
+                });
+        }                           
 
         function generatePLChart() {
             const strategy = document.getElementById('strategy').value;
             const minSpot = parseFloat(document.getElementById('min_spot_pl').value);
             const maxSpot = parseFloat(document.getElementById('max_spot_pl').value);
             const strikePrice = parseFloat(document.getElementById('strike_price').value);
-            const callPrice = parseFloat(document.getElementById('call-price').innerText.replace("Call Price: $", ""));
-            const putPrice = parseFloat(document.getElementById('put-price').innerText.replace("Put Price: $", ""));
-            const premium = strategy.includes('call') ? callPrice : putPrice; // Use call or put price based on strategy
+        
+            const callPriceText = document.getElementById('call-price').innerText;
+            const putPriceText = document.getElementById('put-price').innerText;
+        
+            const callPrice = parseFloat(callPriceText.split(': ')[1].replace('$', '')) || 0;
+            const putPrice = parseFloat(putPriceText.split(': ')[1].replace('$', '')) || 0;
+        
+            const premium = strategy.includes('call') ? callPrice : putPrice;
         
             fetch('/pl', {
                 method: 'POST',
@@ -304,43 +399,51 @@
                     min_spot: minSpot,
                     max_spot: maxSpot,
                     strike_price: strikePrice,
-                    premium: premium // Pass the premium to the backend
+                    premium: premium,
+                }),
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.error) {
+                        alert(data.error);
+                    } else {
+                        const spotPrices = data.spot_prices;
+                        const plValues = data.pl_values;
+        
+                        const trace = {
+                            x: spotPrices,
+                            y: plValues,
+                            mode: 'lines+markers',
+                            name: 'P/L',
+                            line: { color: 'blue' },
+                        };
+        
+                        const layout = {
+                            title: 'Profit and Loss Chart',
+                            xaxis: { title: 'Spot Price' },
+                            yaxis: { title: 'Profit/Loss' },
+                        };
+        
+                        Plotly.newPlot('pl-chart-container', [trace], layout);
+                    }
                 })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.error) {
-                    alert(data.error);
-                } else {
-                    const spotPrices = data.spot_prices;
-                    const plValues = data.pl_values;
-        
-                    // Generate P/L chart
-                    const trace = {
-                        x: spotPrices,
-                        y: plValues,
-                        mode: 'lines+markers',
-                        name: 'P/L',
-                        line: { color: 'blue' }
-                    };
-        
-                    const layout = {
-                        title: 'Profit and Loss Chart',
-                        xaxis: { title: 'Spot Price' },
-                        yaxis: { title: 'Profit/Loss' }
-                    };
-        
-                    Plotly.newPlot('pl-chart-container', [trace], layout);
-                }
-            })
-            .catch(error => {
-                alert('An error occurred: ' + error);
-            });
+                .catch(error => {
+                    alert(`An error occurred: ${error}`);
+                });
         }
         
         
+        document.querySelectorAll('input[name="option_type"]').forEach(option => {
+            option.addEventListener('change', (event) => {
+                const exoticFields = document.getElementById('exotic-options-fields');
+                if (event.target.value === 'Exotic') {
+                    exoticFields.style.display = 'block';
+                } else {
+                    exoticFields.style.display = 'none';
+                }
+            });
+        });
         
-              
     </script>
 </body>
 </html>
