@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Black-Scholes Calculator</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css">
+    <style>
+        body {
+            background-color: #f8f9fa;
+            font-family: Arial, sans-serif;
+        }
+        .sidebar {
+            height: 100vh; 
+            background-color: #343a40;
+            padding: 20px;
+            color: white;
+            position: fixed; 
+            top: 0;
+            left: 0;
+            width: 25%;
+            overflow-y: auto;
+        }
+        .sidebar h2, .sidebar h3 {
+            font-size: 1.5rem;
+            color: #ffc107;
+        }
+        .sidebar label {
+            color: #ced4da;
+        }
+        .result-box {
+            font-size: 2rem;
+            font-weight: bold;
+        }
+        .call-price {
+            color: #28a745; /* Green for call price */
+        }
+        .put-price {
+            color: #dc3545; /* Red for put price */
+        }
+        .heatmap-container {
+            margin-top: 50px;
+        }
+        .main-content {
+            margin-left: 25%; 
+            padding: 50px;
+            background-color: #f8f9fa;
+            min-height: 100vh; 
+            overflow-y: auto;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid">
+        <div class="row">
+            <!-- Sidebar -->
+            <div class="col-md-3 sidebar">
+                <h2>Inputs</h2>
+                <form id="pricing-form">
+                    <div class="mb-3">
+                        <label for="stock_price" class="form-label">Stock Price (S):</label>
+                        <input type="number" step="0.01" class="form-control" id="stock_price" name="stock_price" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="strike_price" class="form-label">Strike Price (K):</label>
+                        <input type="number" step="0.01" class="form-control" id="strike_price" name="strike_price" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="time_to_maturity" class="form-label">Time to Maturity (T in years):</label>
+                        <input type="number" step="0.01" class="form-control" id="time_to_maturity" name="time_to_maturity" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="risk_free_rate" class="form-label">Risk-Free Rate (r):</label>
+                        <input type="number" step="0.01" class="form-control" id="risk_free_rate" name="risk_free_rate" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="volatility" class="form-label">Volatility (σ):</label>
+                        <input type="number" step="0.01" class="form-control" id="volatility" name="volatility" required>
+                    </div>
+                    <button type="button" class="btn btn-warning w-100" onclick="calculatePrices()">Calculate</button>
+                </form>
+    
+                <h3 class="mt-5">Heat Map Parameters</h3>
+                <form id="heatmap-form">
+                    <div class="mb-3">
+                        <label for="min_spot" class="form-label">Min Spot Price:</label>
+                        <input type="number" step="1" class="form-control" id="min_spot" value="50">
+                    </div>
+                    <div class="mb-3">
+                        <label for="max_spot" class="form-label">Max Spot Price:</label>
+                        <input type="number" step="1" class="form-control" id="max_spot" value="150">
+                    </div>
+                    <div class="mb-3">
+                        <label for="min_volatility" class="form-label">Min Volatility:</label>
+                        <input type="number" step="0.01" class="form-control" id="min_volatility" value="0.1">
+                    </div>
+                    <div class="mb-3">
+                        <label for="max_volatility" class="form-label">Max Volatility:</label>
+                        <input type="number" step="0.01" class="form-control" id="max_volatility" value="0.5">
+                    </div>
+                    <button type="button" class="btn btn-warning w-100" onclick="generateHeatMap()">Generate Heat Map</button>
+                </form>
+    
+                <h3 class="mt-5">P/L Parameters</h3>
+                <form id="pl-form">
+                    <div class="mb-3">
+                        <label for="strategy" class="form-label">Strategy:</label>
+                        <select id="strategy" class="form-control">
+                            <option value="long_call">Long Call</option>
+                            <option value="long_put">Long Put</option>
+                            <option value="short_call">Short Call</option>
+                            <option value="short_put">Short Put</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="min_spot_pl" class="form-label">Min Spot Price:</label>
+                        <input type="number" step="1" class="form-control" id="min_spot_pl" value="50">
+                    </div>
+                    <div class="mb-3">
+                        <label for="max_spot_pl" class="form-label">Max Spot Price:</label>
+                        <input type="number" step="1" class="form-control" id="max_spot_pl" value="150">
+                    </div>
+                    <button type="button" class="btn btn-warning w-100" onclick="generatePLChart()">Generate P/L Chart</button>
+                </form>
+            </div>
+    
+            <!-- Main Content -->
+            <div class="col-md-9 main-content">
+                <h1 class="text-center">Black-Scholes Option Pricing</h1>
+                <div id="results" style="display: none;">
+                    <p class="result-box call-price" id="call-price"></p>
+                    <p class="result-box put-price" id="put-price"></p>
+                </div>                
+    
+                <div class="heatmap-container">
+                    <h3>Call Price Heatmap</h3>
+                    <div id="call-heatmap-container" class="mt-4"></div>
+    
+                    <h3 class="mt-5">Put Price Heatmap</h3>
+                    <div id="put-heatmap-container" class="mt-4"></div>
+                </div>
+    
+                <div class="pl-container mt-5">
+                    <h3>Profit/Loss Chart</h3>
+                    <div id="pl-chart-container" class="mt-4"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+
+    <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+    <script>
+        function updateVolatilityLabel(value) {
+            document.getElementById('volatility_label').innerText = value;
+        }
+
+        function calculatePrices() {
+            const formData = new FormData(document.getElementById('pricing-form'));
+
+            fetch('/calculate', {
+                method: 'POST',
+                body: formData
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    document.getElementById('call-price').innerText = "Call Price: " + data.call_price;
+                    document.getElementById('put-price').innerText = "Put Price: " + data.put_price;
+                    document.getElementById('results').style.display = 'block';
+                }
+            })
+            .catch(error => {
+                alert('An error occurred: ' + error);
+            });
+        }
+
+        function generateHeatMap() {
+            const minSpot = parseFloat(document.getElementById('min_spot').value);
+            const maxSpot = parseFloat(document.getElementById('max_spot').value);
+            const minVolatility = parseFloat(document.getElementById('min_volatility').value);
+            const maxVolatility = parseFloat(document.getElementById('max_volatility').value);
+            const strikePrice = parseFloat(document.getElementById('strike_price').value);
+            const timeToMaturity = parseFloat(document.getElementById('time_to_maturity').value);
+            const riskFreeRate = parseFloat(document.getElementById('risk_free_rate').value);
+        
+            fetch('/heatmap', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    min_spot: minSpot,
+                    max_spot: maxSpot,
+                    min_volatility: minVolatility,
+                    max_volatility: maxVolatility,
+                    strike_price: strikePrice,
+                    time_to_maturity: timeToMaturity,
+                    risk_free_rate: riskFreeRate
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    const spotPrices = data.spot_prices;
+                    const volatilities = data.volatilities;
+                    const callPrices = data.call_prices;
+                    const putPrices = data.put_prices;
+        
+                    // Unified Color Scale for Call and Put Heatmaps
+                    const minPrice = Math.min(...callPrices.flat(), ...putPrices.flat());
+                    const maxPrice = Math.max(...callPrices.flat(), ...putPrices.flat());
+        
+                    // Call Price Heatmap
+                    const callTrace = {
+                        z: callPrices,
+                        x: spotPrices,
+                        y: volatilities,
+                        type: 'heatmap',
+                        colorscale: [
+                            [0, 'red'], // Lower prices in red
+                            [1, 'green'] // Higher prices in green
+                        ],
+                        zmin: minPrice,
+                        zmax: maxPrice,
+                        text: callPrices.map(row => row.map(val => val.toFixed(2))),
+                        hoverinfo: 'text+z',
+                        showscale: true
+                    };
+        
+                    const callLayout = {
+                        title: 'Call Price Heatmap',
+                        xaxis: { title: 'Spot Price' },
+                        yaxis: { title: 'Volatility' },
+                        annotations: callPrices.flatMap((row, i) =>
+                            row.map((val, j) => ({
+                                x: spotPrices[j],
+                                y: volatilities[i],
+                                text: val.toFixed(2),
+                                font: { color: 'black', size: 10 },
+                                showarrow: false
+                            }))
+                        )
+                    };
+        
+                    Plotly.newPlot('call-heatmap-container', [callTrace], callLayout);
+        
+                    // Put Price Heatmap
+                    const putTrace = {
+                        z: putPrices,
+                        x: spotPrices,
+                        y: volatilities,
+                        type: 'heatmap',
+                        colorscale: [
+                            [0, 'red'], // Lower prices in red
+                            [1, 'green'] // Higher prices in green
+                        ],
+                        zmin: minPrice,
+                        zmax: maxPrice,
+                        text: putPrices.map(row => row.map(val => val.toFixed(2))),
+                        hoverinfo: 'text+z',
+                        showscale: true
+                    };
+        
+                    const putLayout = {
+                        title: 'Put Price Heatmap',
+                        xaxis: { title: 'Spot Price' },
+                        yaxis: { title: 'Volatility' },
+                        annotations: putPrices.flatMap((row, i) =>
+                            row.map((val, j) => ({
+                                x: spotPrices[j],
+                                y: volatilities[i],
+                                text: val.toFixed(2),
+                                font: { color: 'black', size: 10 },
+                                showarrow: false
+                            }))
+                        )
+                    };
+        
+                    Plotly.newPlot('put-heatmap-container', [putTrace], putLayout);
+                }
+            })
+            .catch(error => {
+                alert('An error occurred: ' + error);
+            });
+        }
+
+        function generatePLChart() {
+            const strategy = document.getElementById('strategy').value;
+            const minSpot = parseFloat(document.getElementById('min_spot_pl').value);
+            const maxSpot = parseFloat(document.getElementById('max_spot_pl').value);
+            const strikePrice = parseFloat(document.getElementById('strike_price').value);
+            const callPrice = parseFloat(document.getElementById('call-price').innerText.replace("Call Price: $", ""));
+            const putPrice = parseFloat(document.getElementById('put-price').innerText.replace("Put Price: $", ""));
+            const premium = strategy.includes('call') ? callPrice : putPrice; // Use call or put price based on strategy
+        
+            fetch('/pl', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    strategy: strategy,
+                    min_spot: minSpot,
+                    max_spot: maxSpot,
+                    strike_price: strikePrice,
+                    premium: premium // Pass the premium to the backend
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    const spotPrices = data.spot_prices;
+                    const plValues = data.pl_values;
+        
+                    // Generate P/L chart
+                    const trace = {
+                        x: spotPrices,
+                        y: plValues,
+                        mode: 'lines+markers',
+                        name: 'P/L',
+                        line: { color: 'blue' }
+                    };
+        
+                    const layout = {
+                        title: 'Profit and Loss Chart',
+                        xaxis: { title: 'Spot Price' },
+                        yaxis: { title: 'Profit/Loss' }
+                    };
+        
+                    Plotly.newPlot('pl-chart-container', [trace], layout);
+                }
+            })
+            .catch(error => {
+                alert('An error occurred: ' + error);
+            });
+        }
+        
+        
+        
+              
+    </script>
+</body>
+</html>
